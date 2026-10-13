@@ -1,0 +1,72 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LeadLens – ICP-scored leads</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1b2430;--mu:#6b7686;--ac:#1f6feb;--bd:#e3e7ed}
+@media(prefers-color-scheme:dark){:root{--bg:#0f141b;--card:#171e28;--tx:#e6ebf2;--mu:#8b97a8;--bd:#263040}}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+header{padding:16px 24px;display:flex;justify-content:space-between;align-items:center}h1{font-size:20px;margin:0}h1 span{color:var(--ac)}
+main{padding:0 24px 40px;max-width:1300px;margin:auto}.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}label{font-size:12px;color:var(--mu);display:block}
+input{width:100%;padding:7px 9px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--tx)}
+button,.btn{background:var(--ac);color:#fff;border:0;border-radius:6px;padding:8px 12px;cursor:pointer;text-decoration:none;font-size:13px}
+button.sec{background:transparent;color:var(--tx);border:1px solid var(--bd)}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.wrap{overflow-x:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--bd);vertical-align:top}
+th{font-size:12px;color:var(--mu)}.sc{font-weight:700;padding:3px 9px;border-radius:99px;color:#fff;display:inline-block;cursor:help}
+.chip{font-size:11px;padding:2px 7px;border-radius:99px;border:1px solid var(--bd)}.valid{color:#1a9f4b}.risky{color:#d29a00}.invalid{color:#d63b3b}
+small{color:var(--mu)}#msg{color:var(--mu)}
+</style></head><body>
+<header><h1>Lead<span>Lens</span> <small>score · enrich · verify · dedupe</small></h1><span id="msg"></span></header>
+<main>
+<div class="card"><b>1. Define your Ideal Customer Profile</b> <small>(comma-separated; scoring is live and explainable)</small>
+<div class="grid" style="margin-top:10px">
+<div><label>Industries</label><input id="ind" value="saas, software, marketing"></div>
+<div><label>Locations</label><input id="loc" value="united states, usa, canada"></div>
+<div><label>Decision-maker titles</label><input id="tit" value="ceo, founder, owner, vp, director, head, cto"></div>
+<div><label>Min employees</label><input id="mn" type="number" value="10"></div>
+<div><label>Max employees</label><input id="mx" type="number" value="500"></div></div>
+<div class="row" style="margin-top:12px"><button onclick="rescore()">Apply ICP & rescore</button></div></div>
+<div class="card"><b>2. Add leads</b>
+<div class="row" style="margin-top:10px"><input type="file" id="f" accept=".csv" style="max-width:260px" onchange="upload(this.files[0])">
+<button class="sec" onclick="demo()">Load demo data</button><small>CSV columns: company, website, contact, title, email, industry, size, location</small></div></div>
+<div class="card row" id="stats"></div>
+<div class="card"><div class="row" style="justify-content:space-between"><div class="row"><b>3. Prioritised leads</b>
+<input id="q" placeholder="Search…" oninput="render()" style="width:180px"><label style="display:flex;gap:6px;align-items:center">Min score <input id="ms" type="number" value="0" style="width:70px" oninput="render()"></label></div>
+<div class="row"><button class="sec" onclick="enrichAll()">Enrich & verify all</button><a class="btn sec" style="background:transparent;color:var(--tx);border:1px solid var(--bd)" href="#" onclick="this.href='/api/export-hubspot.csv?min='+ms.value">HubSpot CSV</a><a class="btn" id="exp" href="#" onclick="this.href='/api/export.csv?min='+ms.value">Export CSV</a><button class="sec" onclick="clearAll()">Clear</button></div></div>
+<div class="wrap"><table><thead><tr><th>Score</th><th>Company</th><th>Contact</th><th>Email</th><th>Fit</th><th>Signals</th><th></th></tr></thead><tbody id="tb"></tbody></table></div></div>
+</main>
+<script>
+const $=id=>document.getElementById(id),L=s=>s.split(',').map(x=>x.trim()).filter(Boolean);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const icp=()=>({industries:L(ind.value),locations:L(loc.value),titles:L(tit.value),minSize:+mn.value,maxSize:+mx.value});
+const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
+let leads=[];const say=t=>msg.textContent=t;
+async function load(){leads=await (await fetch('/api/leads')).json();render()}
+const col=s=>s>=70?'#1a9f4b':s>=40?'#d29a00':'#8b97a8';
+function copyPitch(id){navigator.clipboard.writeText(leads.find(l=>l.id==id).pitch);say('Outreach opener copied')}
+function stats(){const c=t=>leads.filter(l=>l.tier==t).length,v=leads.filter(l=>l.email_status=='valid').length,
+avg=leads.length?Math.round(leads.reduce((a,l)=>a+l.score,0)/leads.length):0;
+$('stats').innerHTML=`<span><b>${leads.length}</b> leads</span><span style="color:#1a9f4b"><b>${c('Hot')}</b> Hot</span><span style="color:#d29a00"><b>${c('Warm')}</b> Warm</span><span><b>${c('Cold')}</b> Cold</span><span><b>${v}</b> verified emails</span><span>avg score <b>${avg}</b></span>`;$('stats').style.gap='24px'}
+function render(){stats();const t=q.value.toLowerCase(),m=+ms.value||0;
+tb.innerHTML=leads.filter(l=>l.score>=m&&(l.company+l.contact+l.industry).toLowerCase().includes(t)).map(l=>{const e=l.enriched;
+return `<tr><td><span class="sc" style="background:${col(l.score)}" title="${esc(l.reasons.join('\n'))}">${l.score}</span><br><small>${l.tier}</small></td>
+<td><b>${esc(l.company)}</b><br><small>${esc(l.website)}</small></td><td>${esc(l.contact)}<br><small>${esc(l.title)}</small></td>
+<td>${esc(l.email)||'<small>–</small>'} ${l.email_status?`<span class="chip ${l.email_status}">${l.email_status}</span>`:''}</td>
+<td>${esc(l.industry)}<br><small>${l.size||'?'} emp · ${esc(l.location)}</small></td>
+<td><small>${e?(e.error?'⚠ '+esc(e.error):esc(e.tech.join(', '))+(e.phones[0]?' · '+esc(e.phones[0]):'')+'<br>'+esc(e.description)):'Not enriched'}</small></td>
+<td><button class="sec" onclick="enrich(${l.id})">Enrich</button> <button class="sec" onclick="copyPitch(${l.id})" title="${esc(l.pitch)}">Copy pitch</button></td></tr>`}).join('')||'<tr><td colspan=7><small>No leads yet – upload a CSV or load demo data.</small></td></tr>'}
+async function enrich(id){say('Enriching…');await post('/api/enrich/'+id,{icp:icp()});await load();say('')}
+async function enrichAll(){for(let i=0;i<leads.length;i++){say(`Enriching ${i+1}/${leads.length}…`);await post('/api/enrich/'+leads[i].id,{icp:icp()})}await load();say('Done')}
+async function rescore(){await post('/api/rescore',{icp:icp()});load()}
+async function imp(rows){say('Importing & verifying emails…');const r=await post('/api/import',{rows,icp:icp()});say(`Added ${r.added}, skipped ${r.dupes} duplicates`);load()}
+function parseCSV(t){const rows=[];let r=[],c='',q=false;for(let i=0;i<t.length;i++){const ch=t[i];if(q){if(ch=='"'){if(t[i+1]=='"'){c+='"';i++}else q=false}else c+=ch}else if(ch=='"')q=true;else if(ch==','){r.push(c);c=''}else if(ch=='\n'||ch=='\r'){if(ch=='\r'&&t[i+1]=='\n')i++;r.push(c);c='';if(r.some(x=>x))rows.push(r);r=[]}else c+=ch}
+r.push(c);if(r.some(x=>x))rows.push(r);const h=rows.shift().map(x=>x.trim().toLowerCase());return rows.map(a=>Object.fromEntries(h.map((k,i)=>[k,a[i]])))}
+async function upload(f){if(f)imp(parseCSV(await f.text()))}
+function demo(){imp([
+{company:'HubSpot',website:'hubspot.com',contact:'Jane Doe',title:'VP Marketing',email:'jane@hubspot.com',industry:'SaaS',size:'7000',location:'United States'},
+{company:'Basecamp',website:'basecamp.com',contact:'Sam Lee',title:'Founder',email:'info@basecamp.com',industry:'Software',size:'60',location:'United States'},
+{company:'Buffer',website:'buffer.com',contact:'Ana Ruiz',title:'Head of Growth',email:'ana@buffer.com',industry:'Marketing SaaS',size:'80',location:'Canada'},
+{company:'Local Plumbing Co',website:'example.com',contact:'Bob',title:'Technician',email:'bob@notarealdomain-xyz123.com',industry:'Construction',size:'5',location:'India'},
+{company:'Buffer Inc',website:'https://www.buffer.com',contact:'Dup',title:'CEO',email:'',industry:'SaaS',size:'80',location:'Canada'}])}
+async function clearAll(){if(confirm('Delete all leads?')){await fetch('/api/leads',{method:'DELETE'});load()}}
+load();
+</script></body></html>
